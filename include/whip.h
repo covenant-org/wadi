@@ -1,5 +1,7 @@
 #include "api/peer_connection_interface.h"
 #include "api/scoped_refptr.h"
+#include "logging.h"
+#include <functional>
 #include <string>
 
 class DummySetSessionDescriptionObserver
@@ -8,10 +10,35 @@ public:
   static DummySetSessionDescriptionObserver *Create() {
     return new rtc::RefCountedObject<DummySetSessionDescriptionObserver>();
   }
-  virtual void OnSuccess() { RTC_LOG(INFO) << __FUNCTION__; }
+  virtual void OnSuccess() { tlog("OnSuccess Set Session"); }
   virtual void OnFailure(webrtc::RTCError error) {
     RTC_LOG(INFO) << __FUNCTION__ << " " << ToString(error.type()) << ": "
                   << error.message();
+  }
+};
+
+class CallbackSetSessionDescriptionObserver
+    : public webrtc::SetSessionDescriptionObserver {
+
+public:
+  static CallbackSetSessionDescriptionObserver *
+  Create(const std::function<void()> &callback) {
+    return new rtc::RefCountedObject<CallbackSetSessionDescriptionObserver>(
+        callback);
+  }
+
+  std::function<void()> _callback;
+  explicit CallbackSetSessionDescriptionObserver(
+      const std::function<void()> &callback)
+      : _callback(callback) {}
+
+  void OnSuccess() override {
+    tlog("OnSuccess from callback");
+    _callback();
+  }
+
+  void OnFailure(webrtc::RTCError error) override {
+    tlog("OnFailure: %s", error.message());
   }
 };
 
@@ -19,7 +46,7 @@ class WHIPSession : public webrtc::PeerConnectionObserver,
                     public webrtc::CreateSessionDescriptionObserver {
 public:
   explicit WHIPSession(std::string url);
-  ~WHIPSession(){};
+  ~WHIPSession() {};
   rtc::scoped_refptr<webrtc::PeerConnectionFactoryInterface> factory;
   rtc::scoped_refptr<webrtc::PeerConnectionInterface> pc;
   std::string sdp;

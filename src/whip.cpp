@@ -1,10 +1,15 @@
 #include "whip.h"
 #include "HTTPRequest/Request.hpp"
+#include "api/array_view.h"
 #include "api/audio_codecs/builtin_audio_decoder_factory.h"
 #include "api/audio_codecs/builtin_audio_encoder_factory.h"
 #include "api/create_peerconnection_factory.h"
 #include "api/jsep.h"
+#include "api/media_types.h"
 #include "api/peer_connection_interface.h"
+#include "api/rtc_error.h"
+#include "api/rtp_parameters.h"
+#include "api/rtp_transceiver_interface.h"
 #include "api/video_codecs/builtin_video_decoder_factory.h"
 #include "api/video_codecs/builtin_video_encoder_factory.h"
 #include "common_types.h"
@@ -15,7 +20,9 @@
 #include "pc/video_track_source.h"
 #include "rtc_base/location.h"
 #include "v4l.h"
+#include <algorithm>
 #include <cstdint>
+#include <sstream>
 #include <stdexcept>
 #include <thread>
 
@@ -87,14 +94,14 @@ protected:
     capability.width = this->device_->fmt.fmt.pix.width;
     capability.height = this->device_->fmt.fmt.pix.height;
     //      capability.maxFPS = this->device_->fmt.fmt.pix.;
-    capability.maxFPS = 30;
+    capability.maxFPS = 20;
     capability.videoType = fourcc_to_videotype(
         fourcc_to_string(this->device_->fmt.fmt.pix.pixelformat));
-//    int res = this->capturer_->StartCapture(capability);
- //   if (res < 0) {
- //     tlog("Failed to start video capturer");
- //   }
-    //    this->broadcaster_.AddOrUpdateSink(this, this->broadcaster_.wants());
+    int res = this->capturer_->StartCapture(capability);
+    if (res < 0) {
+      tlog("Failed to start video capturer");
+    }
+    // this->broadcaster_.AddOrUpdateSink(this, this->broadcaster_.wants());
   }
 
 private:
@@ -140,6 +147,22 @@ bool WHIPSession::CreateConnection(bool dtls) {
 }
 
 void WHIPSession::AddCaptureDevice(uint8_t device_idx) {
+  webrtc::RtpTransceiverInit transceiver_init;
+  transceiver_init.direction = webrtc::RtpTransceiverDirection::kSendOnly;
+  transceiver_init.stream_ids = {"stream_id"};
+  auto help =
+      this->pc->AddTransceiver(cricket::MEDIA_TYPE_VIDEO, transceiver_init);
+  rtc::scoped_refptr<webrtc::RtpTransceiverInterface> transceiver =
+      help.value();
+  std::vector<webrtc::RtpCodecCapability> codecs;
+  webrtc::RtpCodecCapability codec;
+  codec.name = "H264";
+  codec.kind = cricket::MEDIA_TYPE_VIDEO;
+  codec.clock_rate = 90000;
+  codecs.emplace_back(std::move(codec));
+  rtc::ArrayView<webrtc::RtpCodecCapability> codecs_view(codecs.data(),
+                                                         codecs.size());
+  transceiver->SetCodecPreferences(codecs_view);
   std::string device_path = "/dev/video" + std::to_string(device_idx);
   rtc::scoped_refptr<CapturerTrackSource> video_device =
       CapturerTrackSource::Create(device_path);
@@ -149,18 +172,23 @@ void WHIPSession::AddCaptureDevice(uint8_t device_idx) {
   rtc::scoped_refptr<webrtc::VideoTrackInterface> video_track_(
       this->factory->CreateVideoTrack("video_label", video_device));
 
-  auto result_or_error = this->pc->AddTrack(video_track_, {"stream_id"});
+  webrtc::RTCErrorOr<rtc::scoped_refptr<webrtc::RtpSenderInterface>>
+      result_or_error = this->pc->AddTrack(video_track_, {"stream_id"});
   if (!result_or_error.ok()) {
     tlog("Failed to add video track: %s", result_or_error.error().message());
   }
+  //  sender->SetParameters(params);
 }
 
 void WHIPSession::CreateOffer() {
   tlog("Creating Offer: %d", this->pc->signaling_state());
   tlog("Senders: %d", this->pc->GetSenders().size());
   this->signaling_thread->PostTask(RTC_FROM_HERE, [this]() {
-    this->pc->CreateOffer(
-        this, webrtc::PeerConnectionInterface::RTCOfferAnswerOptions());
+    auto options = webrtc::PeerConnectionInterface::RTCOfferAnswerOptions();
+    options.offer_to_receive_video = false;
+    options.offer_to_receive_video = false;
+    options.ice_restart = true;
+    this->pc->CreateOffer(this, options);
   });
 }
 
@@ -184,11 +212,9 @@ void WHIPSession::OnRemoveTrack(
 
 void WHIPSession::OnIceCandidate(
     const webrtc::IceCandidateInterface *candidate) {
-  tlog("OnIceCandidate %s %d", candidate->sdp_mid().c_str(),
-       candidate->sdp_mline_index());
   std::string sdp;
   candidate->ToString(&sdp);
-  tlog("Candidate: %s", sdp.c_str());
+  tlog("OnIceCandidate %s", sdp.c_str());
 }
 
 void WHIPSession::OnSuccess(webrtc::SessionDescriptionInterface *desc) {
@@ -196,8 +222,73 @@ void WHIPSession::OnSuccess(webrtc::SessionDescriptionInterface *desc) {
                                 desc);
 
   desc->ToString(&sdp);
+  tlog("SDP: %s", sdp.c_str());
 
-  tlog("SDP Generated");
+  std::istringstream isdpstream(sdp);
+  std::ostringstream osdpstream;
+  std::ostringstream rtmapstream;
+  std::ostringstream midstream;
+  std::string line;
+  std::string current_mline;
+  std::vector<std::string> allowed_codecs = {"H264", "rtx"};
+  std::vector<std::string> allowed_ids;
+  while (getline(isdpstream, line)) {
+    if (line.find("m=video") != std::string::npos) {
+      current_mline = line;
+      continue;
+    }
+    if (line.find("a=rtpmap") != std::string::npos) {
+      auto space = line.find_first_of(' ');
+      std::string codec_id = line.substr(9, space - 9);
+      auto slash = line.find_first_of('/');
+      auto codec = line.substr(space + 1, slash - space - 1);
+      if (std::find(allowed_codecs.begin(), allowed_codecs.end(), codec) !=
+          allowed_codecs.end()) {
+        allowed_ids.push_back(codec_id);
+        rtmapstream << line << "\r\n";
+        tlog("Allowed codec: %s", line.c_str());
+      }
+      continue;
+    }
+    if (line.find("a=rtcp-fb") != std::string::npos ||
+        line.find("a=fmtp") != std::string::npos) {
+      auto space = line.find_first_of(' ');
+      auto dots = line.find_first_of(':');
+      std::string codec_id = line.substr(dots + 1, space - dots - 1);
+      if (std::find(allowed_ids.begin(), allowed_ids.end(), codec_id) !=
+          allowed_ids.end()) {
+        rtmapstream << line << "\r\n";
+        tlog("Allowed line: %s", line.c_str());
+      }
+      continue;
+    }
+    if (line.find("a=ssrc") != std::string::npos && !current_mline.empty()) {
+      auto space = current_mline.find(" ");
+      space = current_mline.find(" ", space + 1);
+      space = current_mline.find(" ", space + 1);
+      auto mline_no_codecs = current_mline.substr(0, space);
+      tlog("MLINE: %s", mline_no_codecs.c_str());
+      osdpstream << mline_no_codecs;
+      for (std::string &codec_id : allowed_ids) {
+        osdpstream << " " << codec_id;
+      }
+      osdpstream << "\r\n";
+      osdpstream << midstream.str();
+      osdpstream << rtmapstream.str();
+      midstream = std::ostringstream();
+      rtmapstream = std::ostringstream();
+      current_mline = std::string();
+    }
+    if (!current_mline.empty()) {
+      midstream << line << "\r\n";
+      tlog("Allowed line: %s", line.c_str());
+      continue;
+    }
+    osdpstream << line << "\r\n";
+  }
+  tlog("Corrected SDP: %s", osdpstream.str().c_str());
+  this->sdp = osdpstream.str();
+
   http::Request request(this->url);
   const auto response =
       request.send("POST", this->sdp, {{"Content-Type", "application/sdp"}});
@@ -208,24 +299,19 @@ void WHIPSession::OnSuccess(webrtc::SessionDescriptionInterface *desc) {
     return;
   }
 
-  for (auto &header : response.headerFields)
-    tlog("%s: %s", header.first.c_str(),
-         header.second.c_str()); // response.headerFields
-
   std::string response_body{response.body.begin(), response.body.end()};
-  tlog("Response Body: %s", response_body.c_str());
-  absl::optional<webrtc::SdpType> sdp_type_opt =
-      webrtc::SdpTypeFromString(response_body);
+  tlog("SDP Response: %s", response_body.c_str());
   webrtc::SdpParseError error;
   std::unique_ptr<webrtc::SessionDescriptionInterface> remote_desc =
-      webrtc::CreateSessionDescription(*sdp_type_opt, response_body, &error);
+      webrtc::CreateSessionDescription(webrtc::SdpType::kAnswer, response_body,
+                                       &error);
   if (!remote_desc) {
     tlog("Failed to create remote description");
     return;
   }
   this->pc->SetRemoteDescription(DummySetSessionDescriptionObserver::Create(),
                                  remote_desc.release());
-  tlog("Remote Description Set");
+  return;
 }
 
 void WHIPSession::OnFailure(webrtc::RTCError error) {
