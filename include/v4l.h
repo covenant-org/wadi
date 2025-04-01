@@ -6,10 +6,15 @@ class V4LDevice {
 public:
   explicit V4LDevice(std::string);
   ~V4LDevice();
-  int _open();
-  int get_format(v4l2_format *);
+  v4l2_capability cap;
+  v4l2_format fmt;
+  bool can_capture();
+  bool can_stream();
 
 private:
+  int _open();
+  int _fill_format();
+  int _fill_cap();
   std::string sysfs_path;
   int fd;
 };

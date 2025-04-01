@@ -1,22 +1,27 @@
 #include "logging.h"
+#include "rtc_base/ssl_adapter.h"
 #include "v4l.h"
+#include "whip.h"
 #include <cstring>
 #include <fcntl.h>
 #include <linux/videodev2.h>
-#include <string>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 
 int main(int argc, char **argv) {
-  V4LDevice device("/dev/video0");
-
-  struct v4l2_format fmt;
-  if (device.get_format(&fmt) < 0) {
-    tlog("Failed to get video format");
-    return 1;
+  rtc::InitializeSSL();
+  rtc::scoped_refptr<WHIPSession> session(
+      new rtc::RefCountedObject<WHIPSession>(
+          "http://159.54.131.60:8889/wadi/whip"));
+  session->Initialize();
+  if (session->CreateConnection(true)) {
+    tlog("Connection created successfully");
   }
+  session->AddCaptureDevice(0);
+  session->CreateOffer();
+  sleep(100000);
 
   return 0;
 }
