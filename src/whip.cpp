@@ -124,6 +124,7 @@ void WHIPSession::Initialize() {
       webrtc::CreateBuiltinAudioEncoderFactory(),
       webrtc::CreateBuiltinAudioDecoderFactory(),
       webrtc::CreateBuiltinVideoEncoderFactory(),
+//      webrtc::CreateNvVideoEncoderFactory(),
       webrtc::CreateBuiltinVideoDecoderFactory(), nullptr, nullptr);
 
   if (!this->factory) {
