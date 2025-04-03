@@ -1,4 +1,5 @@
 #include "whip.h"
+#include "encoder/jetson_encoder.h"
 #include "HTTPRequest/Request.hpp"
 #include "api/array_view.h"
 #include "api/audio_codecs/builtin_audio_decoder_factory.h"
@@ -123,8 +124,8 @@ void WHIPSession::Initialize() {
       nullptr, nullptr, this->signaling_thread.get(), nullptr,
       webrtc::CreateBuiltinAudioEncoderFactory(),
       webrtc::CreateBuiltinAudioDecoderFactory(),
-      webrtc::CreateBuiltinVideoEncoderFactory(),
-//      webrtc::CreateNvVideoEncoderFactory(),
+//      webrtc::CreateBuiltinVideoEncoderFactory(),
+      CreateJetsonEncoderFactory(),
       webrtc::CreateBuiltinVideoDecoderFactory(), nullptr, nullptr);
 
   if (!this->factory) {
