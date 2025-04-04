@@ -5,6 +5,7 @@
 #include "api/video_codecs/video_codec.h"
 #include "api/video_codecs/video_encoder.h"
 #include "api/video_codecs/video_encoder_factory.h"
+#include "encoder/video_encode.h"
 #include <memory>
 
 class JetsonEncoderFactory : public webrtc::VideoEncoderFactory {
@@ -25,8 +26,11 @@ class JetsonEncoderFactory : public webrtc::VideoEncoderFactory {
 
 class JetsonEncoder : public webrtc::VideoEncoder {
 public:
+  context_t ctx;
   JetsonEncoder();
   ~JetsonEncoder() {}
+
+  void SetDefaults();
 
   // Initialize the encoder with the information from the codecSettings
   //
