@@ -27,10 +27,24 @@ class JetsonEncoderFactory : public webrtc::VideoEncoderFactory {
 class JetsonEncoder : public webrtc::VideoEncoder {
 public:
   context_t ctx;
+  webrtc::EncodedImageCallback *callback;
   JetsonEncoder();
   ~JetsonEncoder() {}
 
+  /**
+   * Abort on error.
+   *
+   * @param ctx : Encoder context
+   */
+  static void abort(context_t *ctx) {
+    ctx->got_error = true;
+    ctx->enc->abort();
+  }
+
   void SetDefaults();
+  static bool EncoderCapturePlaneCallback(struct v4l2_buffer *buf,
+                                          NvBuffer *buffer,
+                                          NvBuffer *shared_buffer, void *arg);
 
   // Initialize the encoder with the information from the codecSettings
   //
@@ -79,10 +93,10 @@ public:
          const std::vector<webrtc::VideoFrameType> *frame_types) override;
   // TODO(bugs.webrtc.org/10379): Deprecated. Delete, and make above method pure
   // virtual, as soon as downstream applications are updated.
-  int32_t
-  Encode(const webrtc::VideoFrame &frame,
-         const webrtc::CodecSpecificInfo *codec_specific_info,
-         const std::vector<webrtc::VideoFrameType> *frame_types) override;
+  //  int32_t
+  //  Encode(const webrtc::VideoFrame &frame,
+  //         const webrtc::CodecSpecificInfo *codec_specific_info,
+  //         const std::vector<webrtc::VideoFrameType> *frame_types) override;
 
   // Inform the encoder about the new target bit rate.
   //
@@ -91,22 +105,24 @@ public:
   //          - framerate       : The target frame rate
   //
   // Return value                : WEBRTC_VIDEO_CODEC_OK if OK, < 0 otherwise.
-  int32_t SetRates(uint32_t bitrate, uint32_t framerate) override;
+  int32_t SetRates(uint32_t bitrate, uint32_t framerate) override { return 0; };
 
   // Default fallback: Just use the sum of bitrates as the single target rate.
   // TODO(sprang): Remove this default implementation when we remove SetRates().
   int32_t SetRateAllocation(const webrtc::VideoBitrateAllocation &allocation,
-                            uint32_t framerate) override;
+                            uint32_t framerate) override {
+    return 0;
+  };
 
   // Inform the encoder when the packet loss rate changes.
   //
   // Input:   - packet_loss_rate  : The packet loss rate (0.0 to 1.0).
-  void OnPacketLossRateUpdate(float packet_loss_rate) override;
+  void OnPacketLossRateUpdate(float packet_loss_rate) override {};
 
   // Inform the encoder when the round trip time changes.
   //
   // Input:   - rtt_ms            : The new RTT, in milliseconds.
-  void OnRttUpdate(int64_t rtt_ms) override;
+  void OnRttUpdate(int64_t rtt_ms) override {};
 
   // Returns meta-data about the encoder, such as implementation name.
   // The output of this method may change during runtime. For instance if a
