@@ -2,13 +2,21 @@
 #include "NvUtils.h"
 #include "absl/memory/memory.h"
 #include "api/scoped_refptr.h"
+#include "api/video/encoded_image.h"
 #include "api/video/video_frame_buffer.h"
+#include "common_types.h"
+#include "common_video/libyuv/include/webrtc_libyuv.h"
 #include "logging.h"
+#include "modules/include/module_common_types.h"
 #include <cstdint>
 #include <cstring>
+#include <iomanip>
+#include <ios>
 #include <linux/v4l2-controls.h>
 #include <linux/videodev2.h>
 #include <memory>
+#include <ostream>
+#include <sstream>
 #ifndef MAX_PLANES
 #define MAX_PLANES 4
 #endif
@@ -215,12 +223,31 @@ bool JetsonEncoder::EncoderCapturePlaneCallback(struct v4l2_buffer *buf,
     return false;
   }
 
-  // TODO: Fragmentize
+  size_t required_capacity = webrtc::CalcBufferSize(
+      webrtc::VideoType::kI420, ctx->encode_width, ctx->encode_height);
+  size_t fragments_count = 0;
+  uint32_t buffer_index = buf->index;
+  webrtc::EncodedImage *image = &ctx->encoded_images[buffer_index];
+  if (image->capacity() < required_capacity) {
+    image->Allocate(required_capacity);
+  }
+  webrtc::RTPFragmentationHeader frag_header;
+  const uint8_t start_code[4] = {0x00, 0x00, 0x00, 0x01};
+  std::stringstream ss;
+  ss << std::endl << "frame_" << num_encoded_frames << ".h264" << std::endl;
+  for (size_t i = 0; i < buffer->planes[0].bytesused; i++) {
+    ss << std::hex << std::setw(2) << std::setfill('0')
+       << (int)buffer->planes[0].data[i];
+  }
+  ss << std::endl << std::endl;
+  tlog(ss.str().c_str());
+
+  // TODO: Fill rtp fragmentation header
 
   num_encoded_frames++;
 
   /* encoder qbuffer for capture plane */
-  if (enc->capture_plane.qBuffer(*v4l2_buf, NULL) < 0) {
+  if (enc->capture_plane.qBuffer(*buf, NULL) < 0) {
     tlog("Error while Qing buffer at capture plane");
     JetsonEncoder::abort(ctx);
     return false;
@@ -289,7 +316,16 @@ JetsonEncoder::Encode(const webrtc::VideoFrame &frame,
     }
   }
 
-  // TODO: Fill corresponding encoded image object
+  uint32_t index = v4l2_buf.index;
+  ctx.encoded_images[index]._encodedWidth = ctx.encode_width;
+  ctx.encoded_images[index]._encodedHeight = ctx.encode_height;
+  ctx.encoded_images[index].SetTimestamp(frame.timestamp());
+  ctx.encoded_images[index].ntp_time_ms_ = frame.ntp_time_ms();
+  ctx.encoded_images[index].capture_time_ms_ = frame.render_time_ms();
+  ctx.encoded_images[index].rotation_ = frame.rotation();
+  ctx.encoded_images[index].SetColorSpace(frame.color_space());
+  ctx.encoded_images[index].SetTimestamp(frame.timestamp());
+
   ret = ctx.enc->output_plane.qBuffer(v4l2_buf, NULL);
   if (ret < 0) {
     tlog("Error while queueing buffer at output plane");
