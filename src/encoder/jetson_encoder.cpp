@@ -115,6 +115,7 @@ int32_t JetsonEncoder::InitEncode(const webrtc::VideoCodec *codec_settings,
   ctx.encode_width = ctx.width = codec_settings->width;
   ctx.encode_height = ctx.height = codec_settings->height;
   ctx.enc = NvVideoEncoder::createVideoEncoder("enc0");
+  assert(ctx.enc != nullptr);
   ctx.level = V4L2_MPEG_VIDEO_H264_LEVEL_5_1;
   ctx.output_memory_type = V4L2_MEMORY_MMAP;
   ctx.capture_memory_type = V4L2_MEMORY_MMAP;

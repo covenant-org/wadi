@@ -32,53 +32,59 @@ if(SYSTEM_AARCH64)
 		set(JETSON_MULTIMEDIA_API TRUE)
 		set(MULTIMEDIA_API_TOP_DIR "/usr/src/jetson_multimedia_api")
 
-		# Location of the CUDA Toolkit
-		set(CUDA_PATH "/usr/local/cuda")
+		if(EXISTS "/dev/nvhost-msenc")
+			set(HW_ENCODING_SUPPORT TRUE)
+			target_compile_definitions(${CMAKE_PROJECT_NAME} PUBLIC HW_ENCODING_SUPPORT=1)
 
-		set(TEGRA_ARMABI "aarch64-linux-gnu")
-		set(MULTIMEDIA_CLASS_DIR "${MULTIMEDIA_API_TOP_DIR}/samples/common/classes")
-		set(ALGO_CUDA_DIR "${MULTIMEDIA_API_TOP_DIR}/samples/common/algorithm/cuda")
-		set(ALGO_TRT_DIR "${MULTIMEDIA_API_TOP_DIR}/samples/common/algorithm/trt")
+			# Location of the CUDA Toolkit
+			set(CUDA_PATH "/usr/local/cuda")
 
-		list(APPEND TARGET_LIBS 
-			pthread
-			nvv4l2
-			EGL
-			GLESv2
-			nvbufsurface
-			nvbufsurftransform
-			nvjpeg
-			nvosd
-			drm
-			cuda
-			cudart
-		)
+			set(MULTIMEDIA_CLASS_DIR "${MULTIMEDIA_API_TOP_DIR}/samples/common/classes")
+			set(ALGO_CUDA_DIR "${MULTIMEDIA_API_TOP_DIR}/samples/common/algorithm/cuda")
+			set(ALGO_TRT_DIR "${MULTIMEDIA_API_TOP_DIR}/samples/common/algorithm/trt")
 
-
-		link_directories(
-			"${CUDA_PATH}/lib64"
-			"/usr/lib/${TEGRA_ARMABI}"
-			"/usr/lib/${TEGRA_ARMABI}/nvidia"
-			"/usr/lib/${TEGRA_ARMABI}/nvidia/tegra")
-
-		list(APPEND TARGET_INCLUDE_DIRS
-			"${MULTIMEDIA_API_TOP_DIR}/include"
-			"${MULTIMEDIA_API_TOP_DIR}/include/libjpeg-8b"
-			${ALGO_CUDA_DIR}
-			${ALGO_TRT_DIR}
-			"${CUDA_PATH}/include"
-			"/usr/include/${TEGRA_ARMABI}" 
-			"/usr/include/libdrm" 
-			"/usr/include/opencv4"
+			list(APPEND TARGET_LIBS 
+				pthread
+				nvv4l2
+				EGL
+				GLESv2
+				nvbufsurface
+				nvbufsurftransform
+				nvjpeg
+				nvosd
+				drm
+				cuda
+				cudart
 			)
 
-		file(GLOB MULTIMEDIA_CLASS_SOURCE_FILES "${MULTIMEDIA_CLASS_DIR}/*.cpp")
-		list(APPEND CPP_SOURCE_FILES ${MULTIMEDIA_CLASS_SOURCE_FILES})
+
+			link_directories(
+				"${CUDA_PATH}/lib64"
+				"/usr/lib/${TEGRA_ARMABI}/nvidia"
+				"/usr/lib/${TEGRA_ARMABI}/nvidia/tegra")
+
+			list(APPEND TARGET_INCLUDE_DIRS
+				"${MULTIMEDIA_API_TOP_DIR}/include"
+				"${MULTIMEDIA_API_TOP_DIR}/include/libjpeg-8b"
+				${ALGO_CUDA_DIR}
+				${ALGO_TRT_DIR}
+				"${CUDA_PATH}/include"
+				"/usr/include/${TEGRA_ARMABI}" 
+				"/usr/include/libdrm" 
+				"/usr/include/opencv4"
+				)
+
+			file(GLOB MULTIMEDIA_CLASS_SOURCE_FILES "${MULTIMEDIA_CLASS_DIR}/*.cpp")
+			list(APPEND CPP_SOURCE_FILES ${MULTIMEDIA_CLASS_SOURCE_FILES})
+		else()
+			message(WARNING "Could not find hardware video encoding /dev/nvhost-msenc")
+			list(FILTER CPP_SOURCE_FILES EXCLUDE REGEX jetson_encoder.cpp$)
+		endif()
 	endif()
 
 endif()
 
-list(APPEND TARGET_LIBS ${LIBWEBRTC_PATH})
+list(PREPEND TARGET_LIBS ${LIBWEBRTC_PATH})
 
 cmake_print_variables(LIBWEBRTC_PATH)
 cmake_print_variables(TARGET_LIBS)
