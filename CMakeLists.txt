@@ -5,6 +5,8 @@ project(wadi)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+add_definitions(-DWEBRTC_POSIX=1)
+add_definitions(-D__STDC_CONSTANT_MACROS=1)
 
 
 set(LIBWEBRTC_PATH "${CMAKE_SOURCE_DIR}/libs/webrtc/ubuntu-22.04-amd64/libwebrtc.a")
@@ -13,6 +15,7 @@ set(TARGET_INCLUDE_DIRS include
 	include/webrtc
 	include/webrtc/third_party/abseil-cpp)
 file(GLOB_RECURSE CPP_SOURCE_FILES src/*.cpp)
+list(FILTER CPP_SOURCE_FILES EXCLUDE REGEX jetson_encoder.cpp$)
 
 execute_process(
 	COMMAND bash -c "uname -m"
@@ -24,8 +27,6 @@ endif()
 
 if(SYSTEM_AARCH64)
 	set(LIBWEBRTC_PATH "${CMAKE_SOURCE_DIR}/libs/webrtc/ubuntu-tegra-aarch64/libwebrtc.a")
-	add_definitions(-DWEBRTC_POSIX=1)
-	add_definitions(-D__STDC_CONSTANT_MACROS=1)
 	list(APPEND TARGET_LIBS "X11" "Xrandr")
 
 	if(EXISTS "/usr/src/jetson_multimedia_api/")
@@ -76,9 +77,9 @@ if(SYSTEM_AARCH64)
 
 			file(GLOB MULTIMEDIA_CLASS_SOURCE_FILES "${MULTIMEDIA_CLASS_DIR}/*.cpp")
 			list(APPEND CPP_SOURCE_FILES ${MULTIMEDIA_CLASS_SOURCE_FILES})
+            list(APPEND CPP_SOURCE_FILES src/encoder/jetson_encoder.cpp)
 		else()
 			message(WARNING "Could not find hardware video encoding /dev/nvhost-msenc")
-			list(FILTER CPP_SOURCE_FILES EXCLUDE REGEX jetson_encoder.cpp$)
 		endif()
 	endif()
 
