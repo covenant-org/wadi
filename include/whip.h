@@ -2,6 +2,7 @@
 #include "api/scoped_refptr.h"
 #include "logging.h"
 #include <functional>
+#include <optional>
 #include <string>
 
 class DummySetSessionDescriptionObserver
@@ -50,15 +51,17 @@ public:
   rtc::scoped_refptr<webrtc::PeerConnectionFactoryInterface> factory;
   rtc::scoped_refptr<webrtc::PeerConnectionInterface> pc;
   std::string sdp;
-  uint max_framerate = 30;
-  uint max_bitrate = 1000000000; 
-
+  std::optional<std::vector<std::string>> allowed_codecs = std::nullopt;
+  std::optional<uint> max_framerate = std::nullopt;
+  std::optional<uint> max_bitrate = std::nullopt;
 
   void Initialize();
   void AddCaptureDevice(uint8_t);
   bool CreateConnection(bool);
   void CreateOffer();
   void WaitForOffer();
+  static std::string SDPForceCodecs(std::string sdp,
+                             std::vector<std::string> allowed_codecs);
   std::unique_ptr<rtc::Thread> signaling_thread;
 
   std::string url;

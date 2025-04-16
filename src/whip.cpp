@@ -208,20 +208,9 @@ void WHIPSession::OnIceCandidate(
   tlog("OnIceCandidate %s", sdp.c_str());
 }
 
-void WHIPSession::OnSuccess(webrtc::SessionDescriptionInterface *desc) {
-  this->pc->SetLocalDescription(DummySetSessionDescriptionObserver::Create(),
-                                desc);
-  auto sender = this->pc->GetSenders()[0];
-  webrtc::RtpParameters params = sender->GetParameters();
-  tlog("Encodings %d", params.encodings.size());
-  for (auto &encoding : params.encodings) {
-    encoding.max_bitrate_bps = this->max_bitrate;
-    encoding.max_framerate = this->max_framerate;
-  }
-  sender->SetParameters(params);
-
-  desc->ToString(&sdp);
-  tlog("SDP: %s", sdp.c_str());
+std::string
+WHIPSession::SDPForceCodecs(const std::string sdp,
+                            const std::vector<std::string> allowed_codecs) {
 
   std::istringstream isdpstream(sdp);
   std::ostringstream osdpstream;
@@ -229,7 +218,6 @@ void WHIPSession::OnSuccess(webrtc::SessionDescriptionInterface *desc) {
   std::ostringstream midstream;
   std::string line;
   std::string current_mline;
-  std::vector<std::string> allowed_codecs = {"H264", "rtx"};
   std::vector<std::string> allowed_ids;
   while (getline(isdpstream, line)) {
     if (line.find("m=video") != std::string::npos) {
@@ -245,7 +233,6 @@ void WHIPSession::OnSuccess(webrtc::SessionDescriptionInterface *desc) {
           allowed_codecs.end()) {
         allowed_ids.push_back(codec_id);
         rtmapstream << line << "\r\n";
-        tlog("Allowed codec: %s", line.c_str());
       }
       continue;
     }
@@ -257,7 +244,6 @@ void WHIPSession::OnSuccess(webrtc::SessionDescriptionInterface *desc) {
       if (std::find(allowed_ids.begin(), allowed_ids.end(), codec_id) !=
           allowed_ids.end()) {
         rtmapstream << line << "\r\n";
-        tlog("Allowed line: %s", line.c_str());
       }
       continue;
     }
@@ -266,7 +252,6 @@ void WHIPSession::OnSuccess(webrtc::SessionDescriptionInterface *desc) {
       space = current_mline.find(" ", space + 1);
       space = current_mline.find(" ", space + 1);
       auto mline_no_codecs = current_mline.substr(0, space);
-      tlog("MLINE: %s", mline_no_codecs.c_str());
       osdpstream << mline_no_codecs;
       for (std::string &codec_id : allowed_ids) {
         osdpstream << " " << codec_id;
@@ -280,13 +265,32 @@ void WHIPSession::OnSuccess(webrtc::SessionDescriptionInterface *desc) {
     }
     if (!current_mline.empty()) {
       midstream << line << "\r\n";
-      tlog("Allowed line: %s", line.c_str());
       continue;
     }
     osdpstream << line << "\r\n";
   }
-  tlog("Corrected SDP: %s", osdpstream.str().c_str());
-  this->sdp = osdpstream.str();
+  return osdpstream.str();
+}
+
+void WHIPSession::OnSuccess(webrtc::SessionDescriptionInterface *desc) {
+  this->pc->SetLocalDescription(DummySetSessionDescriptionObserver::Create(),
+                                desc);
+  auto sender = this->pc->GetSenders()[0];
+  auto transceiver = this->pc->GetTransceivers()[0];
+  webrtc::RtpParameters params = sender->GetParameters();
+  tlog("Encodings %d", params.encodings.size());
+  for (auto &encoding : params.encodings) {
+    if (this->max_bitrate.has_value())
+      encoding.max_bitrate_bps = this->max_bitrate.value();
+    if (this->max_framerate.has_value())
+      encoding.max_framerate = this->max_framerate;
+  }
+  sender->SetParameters(params);
+
+  desc->ToString(&sdp);
+  if (this->allowed_codecs.has_value())
+    this->sdp = WHIPSession::SDPForceCodecs(sdp, this->allowed_codecs.value());
+  tlog("SDP: %s", sdp.c_str());
 
   http::Request request(this->url);
   const auto response =
