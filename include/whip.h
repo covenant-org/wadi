@@ -50,6 +50,9 @@ public:
   rtc::scoped_refptr<webrtc::PeerConnectionFactoryInterface> factory;
   rtc::scoped_refptr<webrtc::PeerConnectionInterface> pc;
   std::string sdp;
+  uint max_framerate = 30;
+  uint max_bitrate = 1000000000; 
+
 
   void Initialize();
   void AddCaptureDevice(uint8_t);

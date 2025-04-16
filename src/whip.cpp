@@ -154,22 +154,6 @@ bool WHIPSession::CreateConnection(bool dtls) {
 }
 
 void WHIPSession::AddCaptureDevice(uint8_t device_idx) {
-  webrtc::RtpTransceiverInit transceiver_init;
-  transceiver_init.direction = webrtc::RtpTransceiverDirection::kSendOnly;
-  transceiver_init.stream_ids = {"stream_id"};
-  auto help =
-      this->pc->AddTransceiver(cricket::MEDIA_TYPE_VIDEO, transceiver_init);
-  rtc::scoped_refptr<webrtc::RtpTransceiverInterface> transceiver =
-      help.value();
-  std::vector<webrtc::RtpCodecCapability> codecs;
-  webrtc::RtpCodecCapability codec;
-  codec.name = "H264";
-  codec.kind = cricket::MEDIA_TYPE_VIDEO;
-  codec.clock_rate = 90000;
-  codecs.emplace_back(std::move(codec));
-  rtc::ArrayView<webrtc::RtpCodecCapability> codecs_view(codecs.data(),
-                                                         codecs.size());
-  transceiver->SetCodecPreferences(codecs_view);
   std::string device_path = "/dev/video" + std::to_string(device_idx);
   rtc::scoped_refptr<CapturerTrackSource> video_device =
       CapturerTrackSource::Create(device_path);
@@ -227,6 +211,14 @@ void WHIPSession::OnIceCandidate(
 void WHIPSession::OnSuccess(webrtc::SessionDescriptionInterface *desc) {
   this->pc->SetLocalDescription(DummySetSessionDescriptionObserver::Create(),
                                 desc);
+  auto sender = this->pc->GetSenders()[0];
+  webrtc::RtpParameters params = sender->GetParameters();
+  tlog("Encodings %d", params.encodings.size());
+  for (auto &encoding : params.encodings) {
+    encoding.max_bitrate_bps = this->max_bitrate;
+    encoding.max_framerate = this->max_framerate;
+  }
+  sender->SetParameters(params);
 
   desc->ToString(&sdp);
   tlog("SDP: %s", sdp.c_str());
@@ -318,6 +310,7 @@ void WHIPSession::OnSuccess(webrtc::SessionDescriptionInterface *desc) {
   }
   this->pc->SetRemoteDescription(DummySetSessionDescriptionObserver::Create(),
                                  remote_desc.release());
+
   return;
 }
 
