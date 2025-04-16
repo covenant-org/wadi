@@ -21,7 +21,7 @@ int main(int argc, char **argv) {
   }
   session->AddCaptureDevice(0);
   session->CreateOffer();
-  sleep(100000);
+  while(1);
 
   return 0;
 }

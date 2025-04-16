@@ -1,3 +1,4 @@
+#pragma once
 #include "api/video/video_bitrate_allocation.h"
 #include "api/video/video_frame.h"
 #include "api/video/video_frame_type.h"
@@ -8,7 +9,10 @@
 #include "encoder/video_encode.h"
 #include <memory>
 
+using EncoderInfo = webrtc::VideoEncoder::EncoderInfo;
+
 class JetsonEncoderFactory : public webrtc::VideoEncoderFactory {
+public:
   std::vector<webrtc::SdpVideoFormat> GetSupportedFormats() const override;
 
   // Returns information about how this format will be encoded. The specified
@@ -21,15 +25,14 @@ class JetsonEncoderFactory : public webrtc::VideoEncoderFactory {
   std::unique_ptr<webrtc::VideoEncoder>
   CreateVideoEncoder(const webrtc::SdpVideoFormat &format) override;
 
-  ~JetsonEncoderFactory() {}
 };
 
 class JetsonEncoder : public webrtc::VideoEncoder {
 public:
   context_t ctx;
   webrtc::EncodedImageCallback *callback;
-  JetsonEncoder();
-  ~JetsonEncoder() {}
+//  JetsonEncoder();
+//  ~JetsonEncoder() {}
 
   /**
    * Abort on error.
