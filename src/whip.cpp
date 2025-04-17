@@ -1,18 +1,16 @@
 #include "whip.h"
+#include <linux/videodev2.h>
 #ifdef HW_ENCODING_SUPPORT
 #include "encoder/jetson_encoder.h"
 #endif
 #include "HTTPRequest/Request.hpp"
-#include "api/array_view.h"
 #include "api/audio_codecs/builtin_audio_decoder_factory.h"
 #include "api/audio_codecs/builtin_audio_encoder_factory.h"
 #include "api/create_peerconnection_factory.h"
 #include "api/jsep.h"
-#include "api/media_types.h"
 #include "api/peer_connection_interface.h"
 #include "api/rtc_error.h"
 #include "api/rtp_parameters.h"
-#include "api/rtp_transceiver_interface.h"
 #include "api/video_codecs/builtin_video_decoder_factory.h"
 #include "api/video_codecs/builtin_video_encoder_factory.h"
 #include "common_types.h"
@@ -40,7 +38,7 @@ webrtc::VideoType fourcc_to_videotype(std::string fourcc) {
   if (fourcc == "RGB24") {
     return webrtc::VideoType::kRGB24;
   }
-  if (fourcc == "YUY2") {
+  if (fourcc == "YUY2" || fourcc == "YUYV") {
     return webrtc::VideoType::kYUY2;
   }
   if (fourcc == "YV12") {
@@ -79,6 +77,28 @@ public:
                                                           std::move(device));
   }
 
+  static rtc::scoped_refptr<CapturerTrackSource>
+  CreateWithConfig(std::string video_device_path, CaptureTrackConfig config) {
+    std::unique_ptr<V4LDevice> device(new V4LDevice(video_device_path));
+    tlog("Setting video capturer config %dx%d@%d", config.width, config.height,
+         config.fps);
+    device->fmt.fmt.pix.width = config.width;
+    device->fmt.fmt.pix.height = config.height;
+    device->fmt.fmt.pix.pixelformat = v4l2_fourcc(
+        config.fourcc[0], config.fourcc[1], config.fourcc[2], config.fourcc[3]);
+    device->framerate = config.fps;
+    tlog("Creating video capturer");
+    rtc::scoped_refptr<webrtc::VideoCaptureModule> capturer =
+        webrtc::VideoCaptureFactory::Create((const char *)device->cap.bus_info);
+    if (!capturer) {
+      tlog("Failed to create video capturer");
+      return nullptr;
+    }
+    tlog("Created video capturer");
+    return new rtc::RefCountedObject<CapturerTrackSource>(std::move(capturer),
+                                                          std::move(device));
+  }
+
   void OnFrame(const webrtc::VideoFrame &frame) override {
     // tlog("OnFrame");
   }
@@ -91,20 +111,20 @@ protected:
       std::unique_ptr<V4LDevice> device)
       : VideoTrackSource(/*remote=*/false), capturer_(std::move(capturer)),
         device_(std::move(device)) {
+//    assert(this->device_->sync_format());
     this->capturer_->RegisterCaptureDataCallback(&this->broadcaster_);
 
     struct webrtc::VideoCaptureCapability capability;
     capability.width = this->device_->fmt.fmt.pix.width;
     capability.height = this->device_->fmt.fmt.pix.height;
-    //      capability.maxFPS = this->device_->fmt.fmt.pix.;
-    capability.maxFPS = 20;
+    capability.maxFPS = this->device_->framerate;
     capability.videoType = fourcc_to_videotype(
         fourcc_to_string(this->device_->fmt.fmt.pix.pixelformat));
     int res = this->capturer_->StartCapture(capability);
     if (res < 0) {
       tlog("Failed to start video capturer");
+      assert(false);
     }
-    // this->broadcaster_.AddOrUpdateSink(this, this->broadcaster_.wants());
   }
 
 private:
@@ -153,10 +173,13 @@ bool WHIPSession::CreateConnection(bool dtls) {
   return this->pc != nullptr;
 }
 
-void WHIPSession::AddCaptureDevice(uint8_t device_idx) {
+void WHIPSession::AddCaptureDevice(uint8_t device_idx,
+                                   std::optional<CaptureTrackConfig> config) {
   std::string device_path = "/dev/video" + std::to_string(device_idx);
   rtc::scoped_refptr<CapturerTrackSource> video_device =
-      CapturerTrackSource::Create(device_path);
+      config.has_value()
+          ? CapturerTrackSource::CreateWithConfig(device_path, config.value())
+          : CapturerTrackSource::Create(device_path);
   if (!video_device)
     throw std::runtime_error("Failed to create video device");
 
@@ -276,7 +299,6 @@ void WHIPSession::OnSuccess(webrtc::SessionDescriptionInterface *desc) {
   this->pc->SetLocalDescription(DummySetSessionDescriptionObserver::Create(),
                                 desc);
   auto sender = this->pc->GetSenders()[0];
-  auto transceiver = this->pc->GetTransceivers()[0];
   webrtc::RtpParameters params = sender->GetParameters();
   tlog("Encodings %d", params.encodings.size());
   for (auto &encoding : params.encodings) {

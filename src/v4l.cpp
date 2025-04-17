@@ -59,6 +59,19 @@ int V4LDevice::_open() {
   return 0;
 }
 
+bool V4LDevice::sync_format() {
+  v4l2_format desired_format = fmt;
+  int ret = ioctl(fd, VIDIOC_S_FMT, &fmt);
+  if (ret < 0) {
+    tlog("Failed to set video format");
+    return false;
+  }
+  this->_fill_format();
+  return fmt.fmt.pix.width == desired_format.fmt.pix.width &&
+         fmt.fmt.pix.height == desired_format.fmt.pix.height &&
+         fmt.fmt.pix.pixelformat == desired_format.fmt.pix.pixelformat;
+}
+
 int V4LDevice::_fill_cap() {
   tlog("Getting video capabilities");
   int ret = ioctl(fd, VIDIOC_QUERYCAP, &cap);

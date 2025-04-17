@@ -5,6 +5,13 @@
 #include <optional>
 #include <string>
 
+struct CaptureTrackConfig {
+  uint32_t width;
+  uint32_t height;
+  uint32_t fps;
+  char fourcc[4];
+};
+
 class DummySetSessionDescriptionObserver
     : public webrtc::SetSessionDescriptionObserver {
 public:
@@ -56,12 +63,12 @@ public:
   std::optional<uint> max_bitrate = std::nullopt;
 
   void Initialize();
-  void AddCaptureDevice(uint8_t);
+  void AddCaptureDevice(uint8_t, std::optional<CaptureTrackConfig>);
   bool CreateConnection(bool);
   void CreateOffer();
   void WaitForOffer();
   static std::string SDPForceCodecs(std::string sdp,
-                             std::vector<std::string> allowed_codecs);
+                                    std::vector<std::string> allowed_codecs);
   std::unique_ptr<rtc::Thread> signaling_thread;
 
   std::string url;
