@@ -95,6 +95,7 @@ int main(int argc, char **argv) {
   rtc::scoped_refptr<WHIPSession> session(
       new rtc::RefCountedObject<WHIPSession>(config.whip_endpoint));
   tlog("Requesting connection to whip server %s", config.whip_endpoint.c_str());
+  session->allowed_codecs={"VP8", "VP9"};
   //"http://159.54.131.60:8889/wadi/whip"));
   session->Initialize();
   if (session->CreateConnection(true)) {
