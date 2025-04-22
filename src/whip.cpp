@@ -195,8 +195,6 @@ void WHIPSession::AddCaptureDevice(uint8_t device_idx,
 }
 
 void WHIPSession::CreateOffer() {
-  tlog("Creating Offer: %d", this->pc->signaling_state());
-  tlog("Senders: %d", this->pc->GetSenders().size());
   this->signaling_thread->PostTask(RTC_FROM_HERE, [this]() {
     auto options = webrtc::PeerConnectionInterface::RTCOfferAnswerOptions();
     options.offer_to_receive_video = false;
@@ -216,19 +214,16 @@ void WHIPSession::OnAddTrack(
     rtc::scoped_refptr<webrtc::RtpReceiverInterface> receiver,
     const std::vector<rtc::scoped_refptr<webrtc::MediaStreamInterface>>
         &streams) {
-  tlog("OnAddTrack");
 }
 
 void WHIPSession::OnRemoveTrack(
     rtc::scoped_refptr<webrtc::RtpReceiverInterface> receiver) {
-  tlog("OnRemoveTrack");
 }
 
 void WHIPSession::OnIceCandidate(
     const webrtc::IceCandidateInterface *candidate) {
   std::string sdp;
   candidate->ToString(&sdp);
-  tlog("OnIceCandidate %s", sdp.c_str());
 }
 
 std::string
@@ -300,7 +295,6 @@ void WHIPSession::OnSuccess(webrtc::SessionDescriptionInterface *desc) {
                                 desc);
   auto sender = this->pc->GetSenders()[0];
   webrtc::RtpParameters params = sender->GetParameters();
-  tlog("Encodings %d", params.encodings.size());
   for (auto &encoding : params.encodings) {
     if (this->max_bitrate.has_value())
       encoding.max_bitrate_bps = this->max_bitrate.value();
@@ -312,7 +306,6 @@ void WHIPSession::OnSuccess(webrtc::SessionDescriptionInterface *desc) {
   desc->ToString(&sdp);
   if (this->allowed_codecs.has_value())
     this->sdp = WHIPSession::SDPForceCodecs(sdp, this->allowed_codecs.value());
-  tlog("SDP: %s", sdp.c_str());
 
   http::Request request(this->url);
   const auto response =
@@ -325,7 +318,6 @@ void WHIPSession::OnSuccess(webrtc::SessionDescriptionInterface *desc) {
   }
 
   std::string response_body{response.body.begin(), response.body.end()};
-  tlog("SDP Response: %s", response_body.c_str());
   webrtc::SdpParseError error;
   std::unique_ptr<webrtc::SessionDescriptionInterface> remote_desc =
       webrtc::CreateSessionDescription(webrtc::SdpType::kAnswer, response_body,
