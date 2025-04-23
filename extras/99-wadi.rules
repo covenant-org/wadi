@@ -1,0 +1,8 @@
+SUBSYSTEM=="video4linux", ACTION=="add|change", ENV{ID_V4L_PRODUCT}=="Elgato HD60 X: Elgato HD60 X", \
+ATTR{index}=="0", GROUP="root", TAG+="systemd", \
+PROGRAM="/usr/bin/systemd-escape -p --template=wadi@.service $env{DEVNAME}", \
+ENV{SYSTEMD_WANTS}+="%c"
+
+SUBSYSTEM=="video4linux", ACTION=="remove", ENV{ID_V4L_PRODUCT}=="Elgato HD60 X: Elgato HD60 X", \
+TAG+="systemd"
+

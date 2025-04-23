@@ -1,0 +1,12 @@
+[Unit]
+Description=Wadi service for webrtc video retransmission
+Wants=network-online.target
+StopWhenUnneeded=true
+
+[Service]
+User=root
+Type=simple
+ExecStartPre=/bin/sh -c "pulseaudio -D & sleep 10"
+ExecStart=/usr/bin/wadi -c yuyv -d /%I -h 720 -w 1280 -r 60 http://159.54.131.60:8889/wadi/whip
+ExecStopPost=pulseaudio -k
+
